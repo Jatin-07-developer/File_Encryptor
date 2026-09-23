@@ -167,14 +167,26 @@ class FileLockerGUI(tk.Tk):
 
         token = fernet.encrypt(data)
 
-        tmp_path = self.selected_file + ".tmp"
+        base, ext = os.path.splitext(self.selected_file)
+        ext_bytes = ext.encode("utf-8")
+        new_path = base + ".txt"
+
+        tmp_path = new_path + ".tmp"
         with open(tmp_path, "wb") as f:
             f.write(MAGIC)
+            f.write(len(ext_bytes).to_bytes(1, "big"))
+            f.write(ext_bytes)
             f.write(salt)
             f.write(token)
-        os.replace(tmp_path, self.selected_file)
+        os.replace(tmp_path, new_path)
 
-        self.print_log(f">>> FILE ENCRYPTED IN PLACE: {self.selected_file}")
+        if new_path != self.selected_file:
+            os.remove(self.selected_file)
+
+        self.selected_file = new_path
+        self.file_label.config(text=os.path.basename(new_path))
+        self.print_log(f">>> FILE ENCRYPTED -> {new_path}")
+        self.print_log(">>> OPEN IT IN A TEXT EDITOR TO SEE SCRAMBLED DATA.")
 
     def decrypt_action(self):
         if not self.selected_file:
@@ -192,8 +204,14 @@ class FileLockerGUI(tk.Tk):
             self.print_log(">>> ERROR: FILE IS NOT ENCRYPTED (OR ALREADY UNLOCKED).")
             return
 
-        salt = raw[len(MAGIC):len(MAGIC) + SALT_SIZE]
-        token = raw[len(MAGIC) + SALT_SIZE:]
+        offset = len(MAGIC)
+        ext_len = raw[offset]
+        offset += 1
+        ext = raw[offset:offset + ext_len].decode("utf-8")
+        offset += ext_len
+        salt = raw[offset:offset + SALT_SIZE]
+        offset += SALT_SIZE
+        token = raw[offset:]
 
         self.print_log(">>> VERIFYING PASSKEY...")
         key = derive_key(passphrase, salt)
@@ -205,14 +223,24 @@ class FileLockerGUI(tk.Tk):
             self.print_log(">>> ACCESS DENIED. INCORRECT PASSKEY.")
             return
 
-        tmp_path = self.selected_file + ".tmp"
+        base = os.path.splitext(self.selected_file)[0]
+        new_path = base + ext
+        tmp_path = new_path + ".tmp"
         with open(tmp_path, "wb") as f:
             f.write(data)
-        os.replace(tmp_path, self.selected_file)
+        os.replace(tmp_path, new_path)
 
-        self.print_log(f">>> ACCESS GRANTED. FILE DECRYPTED IN PLACE: {self.selected_file}")
+        if new_path != self.selected_file:
+            os.remove(self.selected_file)
+
+        self.selected_file = new_path
+        self.file_label.config(text=os.path.basename(new_path))
+        self.print_log(f">>> ACCESS GRANTED. FILE DECRYPTED -> {new_path}")
 
 
 if __name__ == "__main__":
     app = FileLockerGUI()
     app.mainloop()
+
+
+# Code to run the GUI: python "C:\Users\Jatin Gupta\Downloads\File_Encryptor\file_locker.py"
