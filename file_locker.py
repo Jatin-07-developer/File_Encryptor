@@ -151,6 +151,12 @@ class FileLockerGUI(tk.Tk):
             self.print_log(">>> ERROR: PASSKEY REQUIRED.")
             return
 
+        with open(self.selected_file, "rb") as f:
+            existing = f.read(len(MAGIC))
+        if existing == MAGIC:
+            self.print_log(">>> ERROR: FILE ALREADY ENCRYPTED.")
+            return
+
         self.print_log(">>> DERIVING KEY (PBKDF2, 480000 ITERATIONS)...")
         salt = os.urandom(SALT_SIZE)
         key = derive_key(passphrase, salt)
@@ -160,21 +166,19 @@ class FileLockerGUI(tk.Tk):
             data = f.read()
 
         token = fernet.encrypt(data)
-        out_path = self.selected_file + ".locked"
-        with open(out_path, "wb") as f:
+
+        tmp_path = self.selected_file + ".tmp"
+        with open(tmp_path, "wb") as f:
             f.write(MAGIC)
             f.write(salt)
             f.write(token)
+        os.replace(tmp_path, self.selected_file)
 
-        self.print_log(f">>> ENCRYPTION COMPLETE -> {out_path}")
-        self.print_log(">>> ORIGINAL FILE LEFT UNTOUCHED.")
+        self.print_log(f">>> FILE ENCRYPTED IN PLACE: {self.selected_file}")
 
     def decrypt_action(self):
         if not self.selected_file:
             self.print_log(">>> ERROR: NO FILE SELECTED.")
-            return
-        if not self.selected_file.endswith(".locked"):
-            self.print_log(">>> ERROR: SELECTED FILE IS NOT A .locked FILE.")
             return
         passphrase = self.pass_entry.get()
         if not passphrase:
@@ -185,7 +189,7 @@ class FileLockerGUI(tk.Tk):
             raw = f.read()
 
         if not raw.startswith(MAGIC):
-            self.print_log(">>> ERROR: UNRECOGNIZED FILE FORMAT.")
+            self.print_log(">>> ERROR: FILE IS NOT ENCRYPTED (OR ALREADY UNLOCKED).")
             return
 
         salt = raw[len(MAGIC):len(MAGIC) + SALT_SIZE]
@@ -201,11 +205,12 @@ class FileLockerGUI(tk.Tk):
             self.print_log(">>> ACCESS DENIED. INCORRECT PASSKEY.")
             return
 
-        out_path = self.selected_file[: -len(".locked")]
-        with open(out_path, "wb") as f:
+        tmp_path = self.selected_file + ".tmp"
+        with open(tmp_path, "wb") as f:
             f.write(data)
+        os.replace(tmp_path, self.selected_file)
 
-        self.print_log(f">>> ACCESS GRANTED. DECRYPTED -> {out_path}")
+        self.print_log(f">>> ACCESS GRANTED. FILE DECRYPTED IN PLACE: {self.selected_file}")
 
 
 if __name__ == "__main__":
